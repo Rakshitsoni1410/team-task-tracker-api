@@ -1,0 +1,35 @@
+# One command, no .env needed:   docker compose up --build
+# Optional overrides (e.g. JWT_SECRET) are read from a .env file or your shell.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tasktracker
+      POSTGRES_USER: tasktracker
+      POSTGRES_PASSWORD: tasktracker
+    ports:
+      - "127.0.0.1:5432:5432"   # loopback only; remove if you do not need host access
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasktracker -d tasktracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+psycopg://tasktracker:tasktracker@db:5432/tasktracker
+      JWT_SECRET: ${JWT_SECRET:-development-only-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  postgres_data:
