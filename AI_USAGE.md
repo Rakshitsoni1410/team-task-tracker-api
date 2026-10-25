@@ -1,64 +1,58 @@
 # AI Usage Disclosure
 
-AI tools were used on this project. I am responsible for every line submitted and can explain and change it.
-
-> **Before submitting, replace each `TODO(you)` line with your own words.** This file is only valuable to a
-> reviewer if it is *your* honest account. Everything not marked TODO below is a factual record of work that was
-> done and checked by running commands/tests.
+I used AI tools heavily on this project. This file records which tools, for what, what I checked myself, and
+where the AI output was wrong or incomplete. I remain responsible for all submitted code.
 
 ## Tools used
 
 | Tool | Used for |
 |---|---|
-| ChatGPT | Initial project scaffold: structure, models, schemas, routes, first tests, first README. *TODO(you): confirm this is accurate, and add any other tool (Copilot, Cursor, …) you used.* |
-| Claude (Anthropic) | A review-and-hardening pass over the scaffold: finding defects, fixing them, writing most of the test-suite, CI, Docker hardening, README rewrite. |
+| ChatGPT | First version of the project: folder structure, models, schemas, routes, first tests and first README. |
+| Claude (Anthropic) | Reviewing the project against the assignment brief, fixing the problems it found, writing most of the test suite, CI workflow, Docker files, the seed script and the final README. Also helped me set up and run the project on Windows. |
 
-## Example prompts / use cases
+## Example prompts and use cases
 
-- "Design a FastAPI + PostgreSQL schema for users, projects, membership and tasks." *(scaffold)*
-- "Review this project against the assignment brief like a senior engineering manager, and fix everything."
-  *(hardening pass)*
-- *TODO(you): add 2-3 prompts you actually wrote.*
+- Uploaded the assignment PDF and the project zip and asked Claude to review the project against the brief.
+- "Make best and do all changes, check all things like a senior manager." This led to the hardening pass.
+- Asked for step-by-step Windows PowerShell instructions to run the project, and pasted my error messages
+  (missing `requirements-dev.txt`, `alembic` and `sqlalchemy` not found, `401 MISSING_TOKEN`, `404 Not Found`)
+  to get them explained and fixed.
 
-## What AI generated
+## What the AI generated
 
-- Layered structure (routers / services / repositories), models, Pydantic schemas, Alembic migration.
-- The 126-test suite, GitHub Actions workflow, Dockerfile / Compose file, seed script, README.
-- *TODO(you): anything else.*
+- The layered structure (routers / services / repositories), database models, Pydantic schemas and the
+  Alembic migration.
+- The 126 automated tests, GitHub Actions workflow, Dockerfile and Docker Compose file, seed script and README.
+- The fixes listed in the last section of this file.
 
-## What was verified by running it (not just read)
+## What I verified myself
 
-- Full suite: **126 passed** on in-memory SQLite **and** on PostgreSQL 16; `ruff check` clean.
-- Migration: `upgrade → downgrade base → upgrade` on PostgreSQL; a test fails if migration and models drift.
-- Live server on PostgreSQL driven with `curl`: register/login, project, member, task create/update,
-  filters, summary, and 401 / 403 / 404 / 422 responses.
-- Fresh virtualenv from the pinned `requirements-dev.txt`; SQLite zero-setup path; app refuses to start in
-  `production` with a placeholder secret.
-- Not run in the hardening environment: the Docker files. *TODO(you): run `docker compose up --build` once and
-  note the result here.*
-- *TODO(you): list what **you** personally traced or changed (e.g. read `task_service.update` line by line;
-  changed X to see which test fails).*
+- Set up the project on my own Windows machine (Python 3.12.10, virtual environment, `pip install`).
+- Created the SQLite database with `alembic upgrade head` and loaded demo data with `python -m scripts.seed`.
+- Ran `pytest -q` and got **126 passed**.
+- Started the server with `uvicorn` and used Swagger UI: logged in as the demo user and received a token,
+  authorized with it, and saw `401 MISSING_TOKEN` when I called a protected endpoint without a token.
+- Saw a `404` for a project that no longer existed after I deleted data, then reset the database and re-seeded.
+- I did not run the Docker Compose setup, because Docker is not installed on my machine. The Docker files are
+  provided as an optional extra and I have not tested them myself.
 
-## Where AI-generated code was wrong or insufficient
+## Where the AI output was wrong or insufficient
 
-The scaffold shipped with a green test-suite and a README that described behaviour that did not fully work.
-Writing stricter tests exposed three real defects:
+The first version had a passing test suite, but stricter tests found real defects, which the AI then fixed:
 
-1. **Unassigning a task did not work.** `PATCH {"assignee_email": null}` returned the *old* assignee, although the
-   README promised it unassigns. Cause: the session uses `expire_on_commit=False`, so re-reading the task returned
-   the already-loaded, stale relationship. Fix: `populate_existing=True` on the re-fetch, plus a test that
-   confirms the change through a second request.
-2. **Deleting a project left its tasks behind on SQLite.** The models relied on database-level `ON DELETE CASCADE`,
-   which SQLite ignores unless `PRAGMA foreign_keys=ON` is set. The original tests never covered it. Fix: enable
-   the pragma on every SQLite connection, plus a cascade test.
-3. **Time zones were not handled.** A due date sent as `…+05:30` was stored as local wall-clock time on SQLite,
-   so range filters and sorting compared the wrong instants. Fix: normalise all datetimes to UTC on input and
-   output; tests cover offsets, naive input, and offset-aware range filters.
+1. **Unassigning a task did not work.** `PATCH {"assignee_email": null}` returned the old assignee although the
+   README said it unassigns. The cause was stale data kept by the database session after commit. Fixed with
+   `populate_existing=True` and a test that checks the change in a second request.
+2. **Deleting a project left its tasks behind on SQLite.** SQLite ignores foreign-key cascades unless
+   `PRAGMA foreign_keys=ON` is set. Fixed by enabling it on every SQLite connection, with a test.
+3. **Time zones were handled wrongly.** A due date such as `…+05:30` was stored as local time on SQLite, so date
+   filters compared the wrong moments. Fixed by converting every date to UTC on input and output, with tests.
 
-Smaller issues of the same kind: a hard-coded database URL in `alembic.ini`; a default JWT secret that would
-have been used silently in production; a redundant e-mail index; missing indexes for `GET /projects` and the
-`created_at` sort; errors for unknown routes that did not match the documented error shape; unexpected
-exceptions that were not logged; and a test-suite that only ever ran against SQLite although the target is
-PostgreSQL.
+Smaller issues found and fixed: a database URL with credentials hard-coded in `alembic.ini`, a default JWT secret
+that could be used silently in production, unknown routes returning a different error format, unexpected errors
+not being logged, and tests that only ran on SQLite although the target database is PostgreSQL.
 
-*TODO(you): add one example from your own experience if you have one - it reads more convincingly.*
+One more example from my own setup: the AI pinned `ruff==0.16.10` in `requirements-dev.txt`, and on my machine
+`pip install -r requirements-dev.txt` failed on it, which also stopped every other package from installing. I had
+to install the dependencies in separate steps. `ruff` is only a code-style checker and is not needed to run the
+app or the tests.
